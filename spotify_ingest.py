@@ -1,27 +1,55 @@
+import time
+import spotipy 
+from spotipy.oauth2 import SpotifyOAuth
+from spotipy.exceptions import SpotifyException
+from dotenv import load_dotenv
 import os
 import json
-from dotenv import load_dotenv
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
 
 load_dotenv()
 
-sp = spotipy.Spotify(
-    auth_manager=SpotifyOAuth(
-        client_id=os.getenv("SPOTIFY_CLIENT_ID"),
-        client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
-        redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI"),
-        scope="playlist-read-private"
-    )
-)
+client_id = os.getenv("SPOTIPY_CLIENT_ID")
+client_secret = os.getenv("SPOTIPY_CLIENT_SECRET")
+client_uri = os.getenv("SPOTIFY_REDIRECT_URI")
 
-PLAYLIST_ID = "37i9dQZF1DXcBWIGoYBM5M"  
 
-results = sp.playlist_items(PLAYLIST_ID, limit=100)
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+    client_id=client_id, 
+    client_secret=client_secret,
+    redirect_uri=client_uri,
+    scope="user-library-read"))
 
-os.makedirs("data/raw", exist_ok=True)
+def load_favorite_tracks(rate_limit: int):
+    track_dict = []
+    try:
+        results = sp.current_user_saved_tracks(limit=rate_limit)
+    except SpotifyException as e:
+        results = None
+        print(f"That happend: {e}")
 
-with open("data/raw/playlist_items.json", "w") as f:
-    json.dump(results, f, indent=2)
+    track_count = 1
+    while results:
+        for idx, item in enumerate(results['items']):
+            track = item['track']
+            print(track_count + idx, track['artists'][0]['name'], " – ", track['name'])
+            track_dict.append(dict(
+                track_id = track_count + idx,
+                artist_name = track['artists'][0]['name'], 
+                track_name = track['name'],
+                release_date = track['album']['release_date'],
+                track_uri=track['uri'],
+            ))
 
-print("Playlist data saved to data/raw/playlist_items.json")
+        if results['next']:
+            results = sp.next(results)
+            track_count += idx + 1
+            time.sleep(0.5)
+        else:
+            results = None
+            with open('data/favorite_tracks.json', 'w', encoding="utf-8") as file:
+                    json.dump(track_dict, file, ensure_ascii=False, indent=4)
+                    print("Tracks was sucessfully write!")
+
+load_favorite_tracks(20)
+
+    
